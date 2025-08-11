@@ -158,7 +158,6 @@ export default function Home() {
         }));
       }
 
-      setAiPrompt('');
     } catch (error) {
       console.error('Failed to generate email:', error);
       // Fallback to non-streaming
@@ -183,6 +182,7 @@ export default function Home() {
       }
     } finally {
       setAiLoading(false);
+      setAiPrompt(''); // Очищаємо промпт після генерації (успішної або неуспішної)
     }
   };
 
@@ -395,7 +395,10 @@ export default function Home() {
               size="small" 
               variant={selectedAssistant === 'sales' ? 'filled' : 'outlined'}
               color={selectedAssistant === 'sales' ? 'primary' : 'default'}
-              onClick={() => setSelectedAssistant('sales')}
+              onClick={() => {
+                setSelectedAssistant('sales');
+                setAiPrompt(''); // Очищаємо промпт при переключенні
+              }}
               clickable
               disabled={aiLoading}
             />
@@ -404,7 +407,10 @@ export default function Home() {
               size="small" 
               variant={selectedAssistant === 'follow-up' ? 'filled' : 'outlined'}
               color={selectedAssistant === 'follow-up' ? 'primary' : 'default'}
-              onClick={() => setSelectedAssistant('follow-up')}
+              onClick={() => {
+                setSelectedAssistant('follow-up');
+                setAiPrompt(''); // Очищаємо промпт при переключенні
+              }}
               clickable
               disabled={aiLoading}
             />
