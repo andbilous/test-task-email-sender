@@ -36,6 +36,7 @@ export default function Home() {
   const [aiModalOpen, setAiModalOpen] = useState(false);
   const [aiPrompt, setAiPrompt] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
+  const [selectedAssistant, setSelectedAssistant] = useState('sales'); // 'sales' or 'follow-up'
   const [emailForm, setEmailForm] = useState({
     to: '',
     cc: '',
@@ -98,23 +99,88 @@ export default function Home() {
     if (!aiPrompt.trim()) return;
     
     setAiLoading(true);
+    setAiModalOpen(false);
+    
     try {
       const response = await fetch('http://localhost:3001/api/emails/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: aiPrompt, to: emailForm.to })
+        body: JSON.stringify({ 
+          prompt: aiPrompt, 
+          to: emailForm.to,
+          assistantType: selectedAssistant 
+        })
       });
-      
-      const data = await response.json();
+
+      if (!response.body) {
+        throw new Error('No response body');
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let streamedContent = '';
+
+      // Clear existing content and start streaming
       setEmailForm(prev => ({
         ...prev,
-        subject: data.subject,
-        body: data.body
+        subject: '',
+        body: ''
       }));
-      setAiModalOpen(false);
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value, { stream: true });
+        streamedContent += chunk;
+
+        // Try to parse JSON from accumulated content
+        try {
+          const jsonMatch = streamedContent.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            const parsedContent = JSON.parse(jsonMatch[0]);
+            if (parsedContent.subject && parsedContent.body) {
+              setEmailForm(prev => ({
+                ...prev,
+                subject: parsedContent.subject,
+                body: parsedContent.body
+              }));
+            }
+          }
+        } catch (parseError) {
+          // Continue streaming until we get valid JSON
+        }
+
+        // Update UI with streaming text (even if not yet parsed)
+        setEmailForm(prev => ({
+          ...prev,
+          body: prev.body + chunk
+        }));
+      }
+
       setAiPrompt('');
     } catch (error) {
       console.error('Failed to generate email:', error);
+      // Fallback to non-streaming
+      try {
+        const fallbackResponse = await fetch('http://localhost:3001/api/emails/generate-fallback', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            prompt: aiPrompt, 
+            to: emailForm.to,
+            assistantType: selectedAssistant 
+          })
+        });
+        const data = await fallbackResponse.json();
+        setEmailForm(prev => ({
+          ...prev,
+          subject: data.subject,
+          body: data.body
+        }));
+      } catch (fallbackError) {
+        console.error('Fallback generation failed:', fallbackError);
+      }
     } finally {
       setAiLoading(false);
     }
@@ -231,6 +297,9 @@ export default function Home() {
               value={emailForm.to}
               onChange={(e) => handleFormChange('to', e.target.value)}
               fullWidth
+              required
+              error={!emailForm.to.trim() && emailForm.to !== ''}
+              helperText={!emailForm.to.trim() && emailForm.to !== '' ? 'Email address is required for AI generation' : ''}
             />
             <TextField
               label="CC"
@@ -255,7 +324,7 @@ export default function Home() {
                 variant="outlined"
                 startIcon={aiLoading ? <CircularProgress size={16} /> : <AIIcon />}
                 onClick={() => setAiModalOpen(true)}
-                disabled={aiLoading}
+                disabled={aiLoading || !emailForm.to.trim()}
                 sx={{ minWidth: 120 }}
               >
                 {aiLoading ? 'AI Working...' : 'AI ✨'}
@@ -321,8 +390,24 @@ export default function Home() {
             </Box>
           )}
           <Box sx={{ display: 'flex', gap: 1 }}>
-            <Chip label="Sales Assistant" size="small" variant="outlined" />
-            <Chip label="Follow-up Assistant" size="small" variant="outlined" />
+            <Chip 
+              label="Sales Assistant" 
+              size="small" 
+              variant={selectedAssistant === 'sales' ? 'filled' : 'outlined'}
+              color={selectedAssistant === 'sales' ? 'primary' : 'default'}
+              onClick={() => setSelectedAssistant('sales')}
+              clickable
+              disabled={aiLoading}
+            />
+            <Chip 
+              label="Follow-up Assistant" 
+              size="small" 
+              variant={selectedAssistant === 'follow-up' ? 'filled' : 'outlined'}
+              color={selectedAssistant === 'follow-up' ? 'primary' : 'default'}
+              onClick={() => setSelectedAssistant('follow-up')}
+              clickable
+              disabled={aiLoading}
+            />
           </Box>
           <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, mt: 3 }}>
             <Button onClick={() => setAiModalOpen(false)} disabled={aiLoading}>
@@ -331,7 +416,7 @@ export default function Home() {
             <Button
               onClick={handleAIGenerate}
               variant="contained"
-              disabled={!aiPrompt.trim() || aiLoading}
+              disabled={!aiPrompt.trim() || aiLoading || !emailForm.to.trim()}
               startIcon={aiLoading ? <CircularProgress size={20} /> : null}
             >
               {aiLoading ? 'Generating...' : 'Generate'}
