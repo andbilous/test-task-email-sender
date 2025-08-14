@@ -1,4 +1,4 @@
-# Instantly.AI Coding Assignment for AI Engineers
+Coding Assignment for AI Engineers
 
 # Assignment:
 Develop a simple web app allowing users to generate and send emails. The app should have the following features:  
